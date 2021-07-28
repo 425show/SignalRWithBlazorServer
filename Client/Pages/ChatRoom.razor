@@ -1,0 +1,135 @@
+@page "/chatroom"
+@using Microsoft.AspNetCore.SignalR.Client;
+@using Microsoft.Extensions.Configuration
+@using Microsoft.Identity.Web;
+@inject ITokenAcquisition tokenAcquisition;
+@inject IConfiguration Configuration;
+
+<h3>ChatRoom</h3>
+
+<h1>Blazor SignalR Chat Sample</h1>
+<hr />
+ @if (_hasError)
+{
+    <div class="invalid-feedback">@_message</div>
+    <small id="emailHelp" class="form-text text-muted">@_message</small>
+}
+<div class="alert alert-secondary mt-4" role="alert">
+    <span class="oi oi-person mr-2" aria-hidden="true"></span>
+    <span>You are connected as <b>@_username</b></span>
+    <button class="btn btn-sm btn-warning ml-md-auto" @onclick="@DisconnectAsync">Disconnect</button>
+</div>
+<div id="scrollbox">
+    @foreach (var item in _messages)
+    {
+        @if (item.IsNotice)
+        {
+            <div class="alert alert-info">@item.Body</div>
+        }
+        else
+        {
+            <div class="@item.CSS">
+                <div class="user">@item.Username</div>
+                <div class="msg">@item.Body</div>
+            </div>
+        }
+    }
+    <hr />
+    <textarea class="input-lg" placeholder="enter your comment" @bind="@_newMessage"></textarea>
+    <button class="btn btn-sm" @onclick="@(() => SendAsync(_newMessage))">Send</button>
+</div>
+
+@code {
+    
+     HubConnection _connection;
+    // flag to indicate chat status
+    bool _isChatting = false;
+
+    bool _hasError = false;
+
+    // on-screen message
+    string _message;
+
+    // new message input
+    string _newMessage;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; }
+    private string _username;
+
+    private async Task GetUsername()
+    {
+        var authState = await authenticationStateTask;
+        var user = authState.User;
+        _username = user.Identity.Name;
+    }
+
+    // list of messages in chat
+    private List<Message> _messages = new List<Message>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetUsername();
+
+        try
+        {
+            _connection = new HubConnectionBuilder()
+                .WithUrl(Configuration["SignalRHubUri"], options => {
+                    options.AccessTokenProvider = async () => 
+                        await tokenAcquisition.GetAccessTokenForUserAsync(
+                            new string[] {Configuration["SignalRScope"]});
+                })
+                .WithAutomaticReconnect()
+                .Build();
+
+            _connection.On<string, string>("Broadcast", OnMessageReceived);
+            _connection.On<string>("Greeting", OnGreetingReceived);
+            _connection.On<string, string>("NewPlayerEntered", OnNewPlayerEntered);
+
+            await _connection.StartAsync();
+            _isChatting = true;
+        }
+        catch (Exception e)
+        {
+            _message = $"ERROR: Failed to start chat client: {e.Message}";
+            _hasError = true;
+        }
+    }
+
+    void OnMessageReceived(string name, string message)
+    {
+        bool isMine = name.Equals(_username, StringComparison.OrdinalIgnoreCase);
+        _messages.Add(new Message(name, message, isMine));
+
+        StateHasChanged();
+    }
+
+    void OnGreetingReceived(string message)
+    {
+        _messages.Add(new Message(_username, message, true));
+        StateHasChanged();
+    }
+
+    void OnNewPlayerEntered(string name, string message)
+    {
+        _messages.Add(new Message(name, message, false));
+        StateHasChanged();
+    }
+    
+    private async Task SendAsync(string message)
+    {
+        if (_isChatting && !string.IsNullOrWhiteSpace(message))
+        {
+            await _connection.InvokeAsync("Broadcast", message);
+            _newMessage = string.Empty;
+        }
+    }   
+   
+    private async Task DisconnectAsync()
+    {
+        if(_connection != null && _connection.State == HubConnectionState.Connected)
+        {
+            await _connection.DisposeAsync();
+        }
+    }
+}
