@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace testBlazorServer
 {
@@ -20,27 +21,24 @@ namespace testBlazorServer
 
         public void ConfigureServices(IServiceCollection services)
         {
-            // Uncomment to use Auth Code with PKCE instead of Hybrid (Implicit) flow
-            //services.Configure<MicrosoftIdentityOptions>(options => options.ResponseType = "code");
-            //services.AddMicrosoftIdentityWebAppAuthentication(Configuration);
-                    //.EnableTokenAcquisitionToCallDownstreamApi()
-                    //.AddInMemoryTokenCaches();
-
             services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-                .AddMicrosoftIdentityWebApp(Configuration.GetSection("AzureAd"));
-            services.AddControllersWithViews()
-                .AddMicrosoftIdentityUI();
-            services.AddControllersWithViews()
-                    .AddMicrosoftIdentityUI();
+                .AddMicrosoftIdentityWebApp(Configuration.GetSection("AzureAd"))
+                // include the signalr scope here, or use the consent handler yourself (see ChatRoom.razor).
+                // it's a good idea to get the token in the initial request if you don't need other scopes or your 
+                // signalr connection is the first thing your app will do after sign-in.
+                .EnableTokenAcquisitionToCallDownstreamApi() // e.g., new [] { "api://api-id/somescope" }
+                .AddInMemoryTokenCaches();
+
+            services.AddControllersWithViews().AddMicrosoftIdentityUI();
 
             services.AddAuthorization(options =>
             {
                 // By default, all incoming requests will be authorized according to the default policy
                 options.FallbackPolicy = options.DefaultPolicy;
             });
-            
+
             services.AddRazorPages();
-  
+
             services.AddServerSideBlazor()
                 .AddMicrosoftIdentityConsentHandler();
         }
