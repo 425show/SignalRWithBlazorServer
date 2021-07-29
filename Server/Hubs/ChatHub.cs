@@ -8,8 +8,8 @@ using Microsoft.Identity.Web.Resource;
 
 namespace chat.web.Hubs
 {
-    //[Authorize]
-    //[RequiredScope("message.sendreceive")]
+    [Authorize]
+    [RequiredScope("message.sendreceive")]
     public class Chat : Hub
     {
         private readonly ILogger<Chat> logger;

@@ -4,12 +4,14 @@
 @using Microsoft.Identity.Web;
 @inject ITokenAcquisition tokenAcquisition;
 @inject IConfiguration Configuration;
+// include the consent handler here
+@inject Microsoft.Identity.Web.MicrosoftIdentityConsentAndConditionalAccessHandler consentHandler;
 
 <h3>ChatRoom</h3>
 
 <h1>Blazor SignalR Chat Sample</h1>
 <hr />
- @if (_hasError)
+@if (_hasError)
 {
     <div class="invalid-feedback">@_message</div>
     <small id="emailHelp" class="form-text text-muted">@_message</small>
@@ -40,8 +42,8 @@
 </div>
 
 @code {
-    
-     HubConnection _connection;
+
+    HubConnection _connection;
     // flag to indicate chat status
     bool _isChatting = false;
 
@@ -74,13 +76,23 @@
         try
         {
             _connection = new HubConnectionBuilder()
-                .WithUrl(Configuration["SignalRHubUri"], options => {
-                    options.AccessTokenProvider = async () => 
-                        await tokenAcquisition.GetAccessTokenForUserAsync(
-                            new string[] {Configuration["SignalRScope"]});
-                })
-                .WithAutomaticReconnect()
-                .Build();
+            .WithUrl(Configuration["SignalRHubUri"], options =>
+            {
+                options.AccessTokenProvider = async () => {
+                    try
+                    {
+                        return await tokenAcquisition.GetAccessTokenForUserAsync(new string[] { Configuration["SignalRScope"] });
+                    }
+                    // you must catch this exception here to handle the incremental consent case - redirects the user to consent
+                    catch (Microsoft.Identity.Web.MicrosoftIdentityWebChallengeUserException ex)
+                    {
+                        consentHandler.HandleException(ex);
+                    }
+                    return null;
+                };
+            })
+            .WithAutomaticReconnect()
+            .Build();
 
             _connection.On<string, string>("Broadcast", OnMessageReceived);
             _connection.On<string>("Greeting", OnGreetingReceived);
@@ -115,7 +127,7 @@
         _messages.Add(new Message(name, message, false));
         StateHasChanged();
     }
-    
+
     private async Task SendAsync(string message)
     {
         if (_isChatting && !string.IsNullOrWhiteSpace(message))
@@ -123,11 +135,11 @@
             await _connection.InvokeAsync("Broadcast", message);
             _newMessage = string.Empty;
         }
-    }   
-   
+    }
+
     private async Task DisconnectAsync()
     {
-        if(_connection != null && _connection.State == HubConnectionState.Connected)
+        if (_connection != null && _connection.State == HubConnectionState.Connected)
         {
             await _connection.DisposeAsync();
         }
