@@ -10,6 +10,7 @@ namespace chat.web
 {
     public class Startup
     {
+        private const string CorsPolicy = "CorsPolicy";
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
@@ -20,9 +21,21 @@ namespace chat.web
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddMicrosoftIdentityWebApiAuthentication(Configuration);
+
+            services.AddCors(options =>
+            {
+                options.AddPolicy(
+                    name: CorsPolicy,
+                    builder =>
+                    {
+                        builder.AllowAnyOrigin()
+                            .AllowAnyMethod()
+                            .AllowAnyHeader();
+                    });
+            });
             services.AddRazorPages();
             services.AddSignalR();
-            services.AddMicrosoftIdentityWebApiAuthentication(Configuration);
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -43,6 +56,8 @@ namespace chat.web
             app.UseStaticFiles();
 
             app.UseRouting();
+            app.UseCors(CorsPolicy);
+            
             app.UseAuthentication();
             app.UseAuthorization();
 
